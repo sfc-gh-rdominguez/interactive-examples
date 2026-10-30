@@ -15,3 +15,25 @@ doctor connection:
 # Run any check file: just check <connection> 05_table_ready
 check connection name:
   snow sql -c {{connection}} -f data/checks/{{name}}.sql
+
+
+# Generate an unencrypted PKCS#8 key pair for the service user
+keys:
+  mkdir -p keys
+  openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out keys/rsa_key.p8 -nocrypt
+  openssl rsa -in keys/rsa_key.p8 -pubout -out keys/rsa_key.pub
+  chmod 600 keys/rsa_key.p8
+
+# SHA256 fingerprint of the local public key, to compare with DESC USER
+fingerprint:
+  @echo "SHA256:$(openssl rsa -pubin -in keys/rsa_key.pub -outform DER 2>/dev/null | openssl dgst -sha256 -binary | openssl enc -base64)"
+
+# Role, database, schema, standard warehouse
+setup connection:
+  snow sql -c {{connection}} -f data/migrations/001_init.sql
+
+# Service user with the local public key injected into the migration
+service-user connection:
+  sed "s|__SVC_PUBLIC_KEY__|$(grep -v -- '-----' keys/rsa_key.pub | tr -d '\n')|g" data/migrations/002_service_user.sql > /tmp/iak_002.sql
+  snow sql -c {{connection}} -f /tmp/iak_002.sql
+  rm -f /tmp/iak_002.sql
