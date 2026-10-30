@@ -78,3 +78,21 @@ venv py="python3.14":
 # Produce synthetic events: just produce --count 1000 --dup-rate 0.3
 produce *args:
   .venv/bin/python scripts/produce.py {{args}}
+
+# Egress -> visible latency: just probe --dedup LATEST_DEDUP
+probe *args:
+  .venv/bin/python scripts/probe.py {{args}}
+
+# All three scan modes, back to back
+probe-all:
+  just probe --dedup LATEST_DEDUP
+  just probe --dedup LATEST_ALL
+  just probe --dedup LAST_DEDUP --runs 2
+
+# Interactive MV on the CDC table (experiment; allowed to fail)
+rollups connection:
+  -snow sql -c {{connection}} -f data/migrations/005_rollups.sql
+
+# 180-day storage lifecycle policy
+retention connection:
+  snow sql -c {{connection}} -f data/migrations/006_retention.sql
