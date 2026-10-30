@@ -50,25 +50,34 @@ new Elysia()
                  FROM AUDIT_EVENTS DEDUP_OPTION = ${mode(q.mode)}
                  WHERE tenant_id = ? AND event_ts >= DATEADD(minute, -15, SYSDATE())`, [tenant(q.tenant)])))
   .get("/api/merge", ({ query: q }) =>
-    timed(query(`SELECT
-                   (SELECT COUNT(*) FROM AUDIT_EVENTS DEDUP_OPTION = LATEST_ALL WHERE tenant_id = ?) AS VERSIONS,
-                   (SELECT COUNT(DISTINCT event_id) FROM AUDIT_EVENTS DEDUP_OPTION = LATEST_ALL WHERE tenant_id = ?) AS LOGICAL,
-                   (SELECT COUNT(*) FROM AUDIT_EVENTS DEDUP_OPTION = LATEST_DEDUP WHERE tenant_id = ?) AS LATEST_DEDUP,
-                   (SELECT COUNT(*) FROM AUDIT_EVENTS DEDUP_OPTION = LAST_DEDUP WHERE tenant_id = ?) AS LAST_DEDUP`,
+    // One UNION ALL branch per DEDUP_OPTION. Scalar subqueries or CTE joins in a single
+    // query block were observed to apply one option to every scan of the table.
+    timed(query(`SELECT MAX(IFF(k = 'v', n, NULL)) AS VERSIONS,     MAX(IFF(k = 'g', n, NULL)) AS LOGICAL,
+                        MAX(IFF(k = 'd', n, NULL)) AS LATEST_DEDUP, MAX(IFF(k = 'l', n, NULL)) AS LAST_DEDUP
+                 FROM (
+                   SELECT 'v' AS k, COUNT(*) AS n FROM AUDIT_EVENTS DEDUP_OPTION = LATEST_ALL WHERE tenant_id = ?
+                   UNION ALL SELECT 'g', COUNT(DISTINCT event_id) FROM AUDIT_EVENTS DEDUP_OPTION = LATEST_ALL WHERE tenant_id = ?
+                   UNION ALL SELECT 'd', COUNT(*) FROM AUDIT_EVENTS DEDUP_OPTION = LATEST_DEDUP WHERE tenant_id = ?
+                   UNION ALL SELECT 'l', COUNT(*) FROM AUDIT_EVENTS DEDUP_OPTION = LAST_DEDUP WHERE tenant_id = ?
+                 )`,
       Array(4).fill(tenant(q.tenant)))))
   .get("/api/rollup", async ({ query: q }) => {
     const t = tenant(q.tenant);
-    try {
-      return { source: "mv", ...(await timed(query(
-        `SELECT hour AS HOUR, action AS ACTION, events AS EVENTS FROM MV_ACTIONS_BY_TENANT_HOUR
-         WHERE tenant_id = ? AND hour >= DATEADD(hour, -24, SYSDATE()) ORDER BY hour`, [t]))) };
-    } catch {
-      // Step 11 experiment failed (no MV on CDC tables): aggregate directly instead
-      return { source: "direct", ...(await timed(query(
-        `SELECT DATE_TRUNC('HOUR', event_ts) AS HOUR, action AS ACTION, COUNT(*) AS EVENTS
-         FROM AUDIT_EVENTS DEDUP_OPTION = LAST_DEDUP
-         WHERE tenant_id = ? AND event_ts >= DATEADD(hour, -24, SYSDATE()) GROUP BY 1, 2 ORDER BY 1`, [t]))) };
+    const m = mode(q.mode);
+    // The Step 11 MV counts every ingested version, so it only matches LATEST_ALL
+    if (m === "LATEST_ALL") {
+      try {
+        return { source: "mv", ...(await timed(query(
+          `SELECT hour AS HOUR, action AS ACTION, events AS EVENTS FROM MV_ACTIONS_BY_TENANT_HOUR
+           WHERE tenant_id = ? AND hour >= DATEADD(hour, -24, SYSDATE()) ORDER BY hour`, [t]))) };
+      } catch {
+        // No MV (Step 11 experiment failed): fall through to the direct aggregate
+      }
     }
+    return { source: "direct", ...(await timed(query(
+      `SELECT DATE_TRUNC('HOUR', event_ts) AS HOUR, action AS ACTION, COUNT(*) AS EVENTS
+       FROM AUDIT_EVENTS DEDUP_OPTION = ${m}
+       WHERE tenant_id = ? AND event_ts >= DATEADD(hour, -24, SYSDATE()) GROUP BY 1, 2 ORDER BY 1`, [t]))) };
   })
   .post("/api/test-event", async ({ body }) => {
     const t = tenant((body as { tenant?: string } | undefined)?.tenant);
