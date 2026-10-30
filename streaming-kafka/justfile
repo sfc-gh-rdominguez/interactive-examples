@@ -45,3 +45,26 @@ events-table connection:
 # Interactive warehouse with the events table attached
 iwh connection:
   snow sql -c {{connection}} -f data/migrations/004_interactive_wh.sql
+
+# Download connector v4, start Kafka + Connect, create the topic
+kafka-up:
+  mkdir -p plugins/snowflake
+  test -f plugins/snowflake/snowflake-kafka-connector-${KC_VERSION}.jar || curl -fL -o plugins/snowflake/snowflake-kafka-connector-${KC_VERSION}.jar https://repo1.maven.org/maven2/com/snowflake/snowflake-kafka-connector/${KC_VERSION}/snowflake-kafka-connector-${KC_VERSION}.jar
+  test -f plugins/snowflake/bc-fips-2.1.0.jar || curl -fL -o plugins/snowflake/bc-fips-2.1.0.jar https://repo1.maven.org/maven2/org/bouncycastle/bc-fips/2.1.0/bc-fips-2.1.0.jar
+  test -f plugins/snowflake/bcpkix-fips-2.1.8.jar || curl -fL -o plugins/snowflake/bcpkix-fips-2.1.8.jar https://repo1.maven.org/maven2/org/bouncycastle/bcpkix-fips/2.1.8/bcpkix-fips-2.1.8.jar
+  docker compose up -d zookeeper kafka connect; until curl -sf localhost:8083/ >/dev/null; do sleep 3; done
+  docker compose exec kafka kafka-topics --bootstrap-server localhost:9092 --create --if-not-exists --topic ${KAFKA_TOPIC} --partitions 3 --replication-factor 1
+
+# Confirm Connect loaded the Snowflake plugin
+kafka-plugins:
+  curl -s localhost:8083/connector-plugins | jq -r '.[].class' | grep -i snowflake
+
+
+# Register (or update) the sink connector: topic -> AUDIT_EVENTS
+sink-add:
+  chmod +x scripts/register_sink.sh
+  ./scripts/register_sink.sh
+
+# Connector + task states
+sink-status:
+  curl -s localhost:8083/connectors/ia-events-sink/status | jq '{connector: .connector.state, tasks: [.tasks[].state]}'
