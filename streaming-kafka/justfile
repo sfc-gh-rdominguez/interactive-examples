@@ -1,0 +1,17 @@
+set dotenv-load := true
+
+# List recipes
+default:
+  @just --list
+
+# Preflight: local tools, account + region, Interactive CDC enablement
+doctor connection:
+  @for t in docker python3 openssl jq snow; do command -v $t >/dev/null && echo "✓ $t" || echo "✗ $t missing"; done
+  @docker compose version >/dev/null 2>&1 && echo "✓ docker compose" || echo "✗ docker compose missing"
+  @command -v bun >/dev/null && echo "✓ bun" || echo "· bun missing (only needed for 'just web-dev')"
+  @snow sql -c {{connection}} -f data/checks/00_preflight.sql || { echo "✗ cannot reach Snowflake via '{{connection}}' (VPN? connection name?)"; exit 1; }
+  @if snow sql -c {{connection}} -f data/checks/00_cdc_probe.sql >/dev/null 2>&1; then echo "✓ Interactive CDC enabled"; else snow sql -c {{connection}} -q "DROP DATABASE IF EXISTS IA_CDC_PROBE_DB" >/dev/null 2>&1; echo "✗ Interactive CDC NOT enabled."; fi
+
+# Run any check file: just check <connection> 05_table_ready
+check connection name:
+  snow sql -c {{connection}} -f data/checks/{{name}}.sql
