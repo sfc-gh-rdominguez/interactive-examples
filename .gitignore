@@ -1,1 +1,6 @@
 .planning/
+.env
+keys/
+plugins/
+.venv/
+__pycache__/
