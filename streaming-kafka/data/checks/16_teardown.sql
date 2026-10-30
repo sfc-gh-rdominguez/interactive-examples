@@ -1,0 +1,7 @@
+-- After `just teardown`: every SHOW below should return no rows
+USE ROLE ACCOUNTADMIN;
+SHOW DATABASES  LIKE 'IA_LAB';
+SHOW DATABASES  LIKE 'IA_CDC_PROBE_DB';
+SHOW WAREHOUSES LIKE 'IA_LAB%';
+SHOW USERS      LIKE 'IA_%_SVC';
+SHOW ROLES      LIKE 'IA_%_RL';

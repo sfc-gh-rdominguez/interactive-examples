@@ -126,3 +126,21 @@ app-up:
 # Hot-reload the SPA locally against the BFF container (http://localhost:5173)
 web-dev:
   cd web && bun install && bun run dev
+
+# Pause for the day: stop containers, suspend the interactive warehouse (it bills while running)
+stop connection:
+  docker compose stop
+  -snow sql -c {{connection}} -q "USE ROLE IA_LAB_RL; ALTER WAREHOUSE IA_LAB_IWH SUSPEND"
+
+# Remove everything: the sink, all containers + volumes + built images, and every Snowflake object
+[confirm("Drop IA_LAB, both IA_LAB warehouses, the IA_*_SVC users and IA_*_RL roles, and all local containers? [y/N]")]
+teardown connection:
+  -curl -s -X DELETE localhost:8083/connectors/ia-events-sink
+  docker compose down -v --rmi local --remove-orphans
+  snow sql -c {{connection}} -f data/teardown/teardown.sql
+  @echo "Done. Confirm nothing is left: just check {{connection}} 16_teardown"
+
+# Delete generated local files: keys, the connector JARs, the venv, and JS build output (keeps .env)
+[confirm("Delete keys/, plugins/, .venv/, web/node_modules/ and web/dist/? [y/N]")]
+clean-local:
+  rm -rf keys plugins .venv web/node_modules web/dist api/node_modules scripts/__pycache__
