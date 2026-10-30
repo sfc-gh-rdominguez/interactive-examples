@@ -61,3 +61,10 @@ services:
       KAFKA_TOPIC: ${KAFKA_TOPIC}
       KAFKAJS_NO_PARTITIONER_WARNING: "1"
       SERVER_PORT: 8001
+
+  web:
+    build: ./web
+    depends_on: [api]
+    ports: ["8000:8000"]
+    environment:
+      API_URL: http://api:8001

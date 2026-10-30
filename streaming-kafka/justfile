@@ -118,3 +118,11 @@ api-up:
 # Tail BFF logs
 api-logs:
   docker compose logs -f api
+
+# Build + start the dashboard (BFF + SPA) at http://localhost:8000
+app-up:
+  docker compose up -d --build api web
+
+# Hot-reload the SPA locally against the BFF container (http://localhost:5173)
+web-dev:
+  cd web && bun install && bun run dev
