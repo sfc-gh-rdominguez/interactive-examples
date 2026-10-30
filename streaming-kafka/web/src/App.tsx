@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, Check, Clock, Database, GitMerge, Layers, Radio, Search, Send, Server, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Activity, Check, Clock, Copy, Database, GitMerge, Layers, Radio, Search, Send, Server, TriangleAlert, X } from "lucide-react";
 import { AnimatePresence, motion, type TargetAndTransition } from "motion/react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api, type Event, type Health, type Merge, type Mode, type Rollup } from "./api";
@@ -14,6 +14,10 @@ const MODES: { id: Mode; label: string; help: string }[] = [
     help: "Every message received, duplicates included. Fresh on ingest; the raw audit view." },
 ];
 const TARGET_S = 60;
+// Past this, the selected view isn't getting new data: nudge the user to produce some.
+// Last merged normally trails the background merge by 2–5 minutes.
+const STALE_S: Record<Mode, number> = { LATEST_DEDUP: 20, LATEST_ALL: 20, LAST_DEDUP: 360 };
+const PRODUCE_CMD = "just produce --count 1000 --dup-rate 0.3";
 // One hue in lightness steps: the top actions, then "other"
 const SHADES = ["#3b82f6", "#60a5fa", "#93c5fd", "#475569"];
 const TOP_ACTIONS = 3;
@@ -38,7 +42,7 @@ function usePoll<T>(fn: () => Promise<T>, every: number, deps: unknown[]) {
 
 type Test =
   | { state: "idle" }
-  | { state: "sending" | "waiting" | "done" | "timeout"; seconds: number; id?: string }
+  | { state: "sending" | "waiting" | "done" | "timeout"; seconds: number; id?: string; run: number }
   | { state: "error"; message: string };
 
 export default function App() {
@@ -64,27 +68,30 @@ export default function App() {
   const merge = usePoll(() => (on ? api.merge(tenant) : Promise.resolve(null)), 5_000, [tenant, landed]);
   const rollup = usePoll(() => (on ? api.rollup(tenant, mode) : Promise.resolve(null)), 30_000, [tenant, mode]);
 
+  // Each send gets a run number, so its progress line starts from empty instead of draining the last one
+  const runs = useRef(0);
   const sendTest = useCallback(async () => {
+    const run = ++runs.current;
     const t0 = performance.now();
     const secs = () => (performance.now() - t0) / 1000;
     try {
       setToast(null);
-      setTest({ state: "sending", seconds: 0 });
+      setTest({ state: "sending", seconds: 0, run });
       const { event_id } = await api.testEvent(tenant);
       const label = MODES.find((m) => m.id === mode)!.label;
       const tick = async () => {
         const { visible } = await api.visible(tenant, event_id, mode);
         if (visible) {
-          setTest({ state: "done", seconds: secs(), id: event_id });
+          setTest({ state: "done", seconds: secs(), id: event_id, run });
           setToast(<>Queryable in <b>{secs().toFixed(2)}s</b> in <b>{label}</b>.{" "}
             {mode === "LAST_DEDUP" ? "That included waiting for a background merge."
               : <>Try <b>Last merged</b> to see how long the background merge takes.</>}</>);
         } else if (secs() > 120) {
-          setTest({ state: "timeout", seconds: secs(), id: event_id });
+          setTest({ state: "timeout", seconds: secs(), id: event_id, run });
           setToast(<>Not visible in <b>{label}</b> after 120s.{" "}
             {mode === "LAST_DEDUP" ? "Last merged waits for the next background merge; switch to Latest · deduped."
               : <>Check <code>just sink-status</code>.</>}</>);
-        } else { setTest({ state: "waiting", seconds: secs(), id: event_id }); setTimeout(tick, 250); }
+        } else { setTest({ state: "waiting", seconds: secs(), id: event_id, run }); setTimeout(tick, 250); }
       };
       tick();
     } catch (e) {
@@ -95,6 +102,14 @@ export default function App() {
   const busy = test.state === "sending" || test.state === "waiting";
   const current = MODES.find((m) => m.id === mode)!;
   const testId = "id" in test ? test.id : undefined;
+
+  // Stale: no events in view, or the newest is older than this mode's threshold.
+  // Wait for the first freshness poll so the notice doesn't flash on load.
+  const lag = fresh.data ? fresh.data.rows[0]?.LAG_MS ?? null : undefined;
+  const stale = on && lag !== undefined && (lag === null || lag / 1000 > STALE_S[mode]);
+  // Dismissing hides it until data flows again and then stops again
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => { if (!stale) setDismissed(false); }, [stale]);
 
   return (
     <motion.div className="app" variants={stage(0.09, 0.05)} {...presence}>
@@ -161,9 +176,57 @@ export default function App() {
       </motion.footer>
 
       <Toast onClose={closeToast}>{toast}</Toast>
+      <StaleNotice open={stale && !dismissed} lag={lag ?? null} mode={current.label} onClose={() => setDismissed(true)} />
     </motion.div>
   );
 }
+
+// Bottom-right notice while the selected view is stale, with the producer command to copy
+function StaleNotice({ open, lag, mode, onClose }: { open: boolean; lag: number | null; mode: string; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    await navigator.clipboard.writeText(PRODUCE_CMD);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  };
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.aside role="status" className="notice"
+                      initial={{ opacity: 0, y: 24, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1, transition: GLIDE }}
+                      exit={{ opacity: 0, y: 12, transition: { duration: 0.18 } }}>
+          <div className="notice-head">
+            <motion.span variants={bead} initial="hidden" animate="shown"><TriangleAlert size={16} /></motion.span>
+            <b>No new events</b>
+            <button aria-label="Dismiss" onClick={onClose}><X size={14} /></button>
+          </div>
+          <p>
+            {lag === null ? <>Nothing in <b>{mode}</b> for this tenant yet.</>
+              : <>The newest event in <b>{mode}</b> is {formatAge(lag)} old.</>}{" "}
+            Start the producer from <code>streaming-kafka/</code>:
+          </p>
+          <div className="cmd">
+            <code>{PRODUCE_CMD}</code>
+            <motion.button onClick={copy} whileTap={{ scale: 0.92 }} aria-label="Copy command">
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.span key={copied ? "y" : "n"} variants={bead} {...presence}>
+                  {copied ? <Check size={14} /> : <Copy size={14} />}
+                </motion.span>
+              </AnimatePresence>
+              {copied ? "Copied" : "Copy"}
+            </motion.button>
+          </div>
+        </motion.aside>
+      )}
+    </AnimatePresence>
+  );
+}
+
+const formatAge = (ms: number) => {
+  const s = Math.round(ms / 1000);
+  return s < 120 ? `${s}s` : s < 7200 ? `${Math.round(s / 60)} min` : `${Math.round(s / 3600)} h`;
+};
 
 // Swaps its content when `k` changes: the old value leaves up, the new rises in
 function Swap({ k, as = "span", className, children }: { k: React.Key; as?: "span" | "p"; className?: string; children: React.ReactNode }) {
@@ -230,7 +293,8 @@ const HOPS = [
 ];
 const FILL_SECONDS = 0.35;
 
-// The test event's journey as a segmented line. Segments fill one at a time:
+// The test event's journey as a segmented line. All or nothing: a segment fills
+// only when its step is done, and the dot marks the step in progress. Segments fill one at a time:
 // if several finish at once (a fast round trip), each waits for the one before.
 function Hops({ reached, failed }: { reached: number; failed?: boolean }) {
   const [filled, setFilled] = useState(reached);
@@ -255,7 +319,7 @@ function Hops({ reached, failed }: { reached: number; failed?: boolean }) {
               {h.label}
             </span>
             <span className="hop-track">
-              <motion.span initial={false} animate={{ width: done ? "100%" : current ? "35%" : "0%" }}
+              <motion.span initial={false} animate={{ width: done ? "100%" : "0%" }}
                            transition={{ duration: FILL_SECONDS, ease: EASE }} />
             </span>
           </li>
@@ -281,7 +345,7 @@ function TestStat({ t, mode }: { t: Test; mode: string }) {
           reactKey={t.state === "done" || t.state === "timeout" ? `${t.id}-${t.state}` : "running"}
           caption={
             <span className="test-caption">
-              <Hops reached={reached} failed={t.state === "timeout"} />
+              <Hops key={t.run} reached={reached} failed={t.state === "timeout"} />
               <Swap k={t.state}>
                 {t.state === "done" ? <><Check size={12} /> Queryable in <b>{mode}</b></>
                   : t.state === "timeout" ? <>Not visible in <b>{mode}</b> yet</>

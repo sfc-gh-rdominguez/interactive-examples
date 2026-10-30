@@ -40,7 +40,6 @@ h1 { display: flex; flex-wrap: wrap; gap: 0 0.3em; align-items: center; margin: 
 .hops li.failed .hop-dot { border-color: #f87171; color: #f87171; }
 .hop-track { height: 4px; border-radius: 2px; background: #1e293b; overflow: hidden; }
 .hop-track span { display: block; height: 100%; background: #34d399; }
-.hops li.current .hop-track span { background: #fbbf24; }
 
 /* Toolbar: controls only */
 .toolbar { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; margin-bottom: 24px; }
@@ -102,8 +101,22 @@ tr.test td { background: #1e3a8a; }
 .toast > div { flex: 1; }
 .toast button { background: none; border: none; color: #64748b; cursor: pointer; padding: 2px; }
 .toast button:hover { color: #e2e8f0; }
+/* Stale-data notice: bottom right (clear of the centred toast), stays until data flows or it's dismissed */
+.notice { position: fixed; bottom: 24px; right: 20px; z-index: 40; width: min(24rem, calc(100vw - 2rem)); background: #1e293b;
+  border-radius: 14px; padding: 14px 16px; font-size: 14px; color: #cbd5e1; line-height: 1.45; box-shadow: 0 20px 40px #000a; }
+.notice p { margin: 8px 0 10px; }
+.notice b { color: #f8fafc; }
+.notice-head { display: flex; gap: 8px; align-items: center; color: #fbbf24; }
+.notice-head span { display: inline-flex; }
+.notice-head button { margin-left: auto; background: none; border: none; color: #64748b; cursor: pointer; padding: 2px; }
+.notice-head button:hover { color: #e2e8f0; }
+.cmd { display: flex; gap: 8px; align-items: center; background: #020617; border-radius: 8px; padding: 6px 6px 6px 10px; }
+.cmd code { flex: 1; background: none; padding: 0; font-size: 12.5px; color: #e2e8f0; white-space: normal; overflow-wrap: anywhere; user-select: all; }
+.cmd button { flex-shrink: 0; display: inline-flex; gap: 6px; align-items: center; background: #2563eb; color: white; border: none; border-radius: 6px;
+  padding: 5px 10px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.cmd button span { display: inline-flex; }
 footer { display: flex; gap: 16px; justify-content: space-between; margin-top: 24px; font-size: 12px; }
 footer span { display: inline-flex; gap: 6px; align-items: center; }
 .error { color: #f87171; font-size: 13px; }
 
-@media (max-width: 900px) { .hero, .grid { grid-template-columns: 1fr; } button.primary { margin-left: 0; } }
+@media (max-width: 900px) { .hero, .grid { grid-template-columns: 1fr; } button.primary { margin-left: 0; } .toast { bottom: 190px; } }
