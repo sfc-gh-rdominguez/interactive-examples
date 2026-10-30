@@ -42,3 +42,22 @@ services:
       CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
       CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
       CONNECT_PLUGIN_PATH: /usr/share/java,/plugins
+
+  api:
+    build: ./api
+    depends_on:
+      kafka: { condition: service_healthy }
+    ports: ["8001:8001"]
+    volumes: ["./keys/dash_key.p8:/keys/dash_key.p8:ro"]
+    environment:
+      SF_ACCOUNT: ${SF_ACCOUNT}
+      SF_DASH_USER: ${SF_DASH_USER}
+      SF_DASH_ROLE: ${SF_DASH_ROLE}
+      SF_DASH_KEY_PATH: /keys/dash_key.p8
+      SF_DB: ${SF_DB}
+      SF_SCHEMA: ${SF_SCHEMA}
+      SF_IWH: ${SF_IWH}
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC: ${KAFKA_TOPIC}
+      KAFKAJS_NO_PARTITIONER_WARNING: "1"
+      SERVER_PORT: 8001

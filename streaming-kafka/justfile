@@ -110,3 +110,11 @@ dashboard-user connection:
   sed "s|__DASH_PUBLIC_KEY__|$(grep -v -- '-----' keys/dash_key.pub | tr -d '\n')|g" data/migrations/007_dashboard.sql > /tmp/iak_007.sql
   snow sql -c {{connection}} -f /tmp/iak_007.sql
   rm -f /tmp/iak_007.sql
+
+# Build + start the dashboard BFF
+api-up:
+  docker compose up -d --build api
+
+# Tail BFF logs
+api-logs:
+  docker compose logs -f api
