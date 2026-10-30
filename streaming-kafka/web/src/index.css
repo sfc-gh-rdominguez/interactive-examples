@@ -18,9 +18,11 @@ body { margin: 0; }
 code { font-family: ui-monospace, monospace; background: var(--ctp-surface1); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
 
 /* Header: the claim, not the tech */
-header { margin-bottom: 24px; }
-h1 { display: flex; flex-wrap: wrap; gap: 0 0.3em; align-items: center; margin: 0 0 6px; font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
-.lede { margin: 0; max-width: 720px; color: var(--ctp-subtext0); font-size: 15px; line-height: 1.5; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
+h1 { display: flex; flex-wrap: wrap; gap: 0 0.3em; align-items: center; margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+button.ghost { display: flex; gap: 8px; align-items: center; background: transparent; color: var(--ctp-subtext1); border: none;
+  border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+button.ghost:hover { background: var(--ctp-surface0); color: var(--ctp-text); }
 
 /* Hero stats: the three numbers that prove the point */
 .hero { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
@@ -125,6 +127,38 @@ tr.test td { background: color-mix(in srgb, var(--ctp-blue) 22%, transparent); }
 .cmd button { flex-shrink: 0; display: inline-flex; gap: 6px; align-items: center; background: var(--ctp-blue); color: var(--ctp-crust); border: none; border-radius: 6px;
   padding: 5px 10px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 .cmd button span { display: inline-flex; }
+/* Guided tour: dims the page, a spotlight follows the step, clicks pass through */
+.tour { position: fixed; inset: 0; z-index: 50; pointer-events: none; }
+.tour-spot { position: fixed; border-radius: 14px; pointer-events: none;
+  box-shadow: 0 0 0 9999px color-mix(in srgb, var(--ctp-crust) 74%, transparent), 0 0 0 2px color-mix(in srgb, var(--ctp-blue) 55%, transparent); }
+.tour-card { position: fixed; box-sizing: border-box; pointer-events: auto; background: var(--ctp-surface1); border-radius: 16px; padding: 16px 18px;
+  box-shadow: 0 24px 48px #000a; color: var(--ctp-subtext1); font-size: 14px; line-height: 1.5; }
+.tour-measure { position: fixed; top: 0; left: -9999px; visibility: hidden; pointer-events: none; font-size: 14px; line-height: 1.5; }
+.tour-measure h3 { margin: 0 0 6px; font-size: 17px; font-weight: 700; }
+.tour-measure p { margin: 0; }
+.tour-body { overflow: hidden; }
+.tour-card h3 { margin: 0 0 6px; font-size: 17px; font-weight: 700; color: var(--ctp-text); }
+.tour-card p { margin: 0; }
+.tour-card b { color: var(--ctp-text); }
+.tour-card code { background: var(--ctp-surface0); }
+.tour-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.tour-count { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: var(--ctp-overlay2); }
+.tour-head button { background: none; border: none; color: var(--ctp-overlay2); cursor: pointer; padding: 2px; }
+.tour-head button:hover { color: var(--ctp-text); }
+.tour-foot { display: flex; gap: 8px; align-items: center; margin-top: 14px; }
+.tour-dots { display: flex; gap: 5px; margin-right: auto; }
+.tour-dots span { width: 6px; height: 6px; border-radius: 999px; background: var(--ctp-surface2); }
+.tour-dots span.seen { background: var(--ctp-overlay1); }
+.tour-dots span.on { background: var(--ctp-blue); width: 16px; }
+.tour-back, .tour-next { display: inline-flex; gap: 6px; align-items: center; border: none; border-radius: 8px; padding: 7px 12px;
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.tour-back { background: transparent; color: var(--ctp-subtext1); }
+.tour-back:hover { background: var(--ctp-surface0); }
+.tour-next { background: var(--ctp-blue); color: var(--ctp-crust); }
+.tour-next:hover { background: var(--ctp-lavender); }
+.tour-skip { display: block; margin: 10px auto 0; background: none; border: none; color: var(--ctp-overlay2); font: inherit;
+  font-size: 12px; cursor: pointer; }
+.tour-skip:hover { color: var(--ctp-text); text-decoration: underline; }
 footer { display: flex; gap: 16px; justify-content: space-between; margin-top: 24px; font-size: 12px; }
 footer span { display: inline-flex; gap: 6px; align-items: center; }
 .error { color: var(--ctp-red); font-size: 13px; }

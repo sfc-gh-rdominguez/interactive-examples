@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Check, Clock, Copy, Database, GitMerge, Layers, Radio, Search, Send, Server, TriangleAlert, X } from "lucide-react";
+import { Activity, Check, CircleHelp, Clock, Copy, Database, GitMerge, Layers, Radio, Search, Send, Server, TriangleAlert, X } from "lucide-react";
 import { AnimatePresence, motion, type TargetAndTransition } from "motion/react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api, type Event, type Health, type Merge, type Mode, type Rollup } from "./api";
 import { bead, button as landing, EASE, GLIDE, nod, pop, presence, rise, shake, SPRING, stage, swap } from "./motion";
+import { Tour, tourSeen } from "./Tour";
 
 const MODES: { id: Mode; label: string; help: string }[] = [
   { id: "LATEST_DEDUP", label: "Latest · deduped",
-    help: "Newest row per event, deduplicated as you query. Fresh on ingest, slightly slower." },
+    help: "Newest row per event, deduplicated as you query. Up-to-the-second data; queries take a little longer." },
   { id: "LAST_DEDUP", label: "Last merged",
-    help: "State as of the last background merge, usually 2–5 minutes behind. Fastest, so new events appear late." },
+    help: "Quickest queries, but the data is as of the last background merge, usually 2–5 minutes old. New events show up late." },
   { id: "LATEST_ALL", label: "All versions",
-    help: "Every message received, duplicates included. Fresh on ingest; the raw audit view." },
+    help: "Every message received, duplicates included. Up-to-the-second data; the raw audit view." },
 ];
 const TARGET_S = 60;
 // Past this, the selected view isn't getting new data: nudge the user to produce some.
@@ -53,6 +54,9 @@ export default function App() {
   const [mode, setMode] = useState<Mode>("LATEST_DEDUP");
   const [test, setTest] = useState<Test>({ state: "idle" });
   const [toast, setToast] = useState<React.ReactNode>(null);
+  // A first visit opens the tour with the page, not after it: the welcome step has no target,
+  // so the page can assemble behind it. Finishing or skipping is remembered.
+  const [touring, setTouring] = useState(() => !tourSeen());
   const closeToast = useCallback(() => setToast(null), []);
 
   const health = usePoll(api.health, 60_000, []);
@@ -119,14 +123,13 @@ export default function App() {
       <header>
         <motion.h1 variants={stage(0.05, 0)}>
           <motion.span variants={pop} className="word"><Activity size={22} /></motion.span>
-          {"Kafka to Snowflake, in seconds".split(" ").map((w, i) => (
+          {"Kafka to queryable, in seconds".split(" ").map((w, i) => (
             <motion.span key={i} variants={pop} className="word">{w}</motion.span>
           ))}
         </motion.h1>
-        <motion.p variants={pop} className="lede">
-          Audit events stream from Kafka into a CDC interactive table. Duplicates are collapsed by key,
-          and every event should be queryable in under {TARGET_S} seconds.
-        </motion.p>
+        <motion.button variants={pop} className="ghost" onClick={() => setTouring(true)} data-tour="replay">
+          <CircleHelp size={16} /> Take the tour
+        </motion.button>
       </header>
 
       <motion.section className="hero" variants={stage(0.08, 0)}>
@@ -142,7 +145,7 @@ export default function App() {
             {tenants.data?.rows.map((t) => <option key={t.TENANT}>{t.TENANT}</option>)}
           </select>
         </label>
-        <div className="mode">
+        <div className="mode" data-tour="mode">
           <div className="segmented">
             {MODES.map((m) => (
               <button key={m.id} className={m.id === mode ? "on" : ""} onClick={() => setMode(m.id)}>
@@ -153,21 +156,21 @@ export default function App() {
           </div>
           <Swap k={mode} as="p" className="help">{current.help}</Swap>
         </div>
-        <motion.button variants={landing} className="primary" disabled={!on || busy} onClick={sendTest}
+        <motion.button variants={landing} className="primary" disabled={!on || busy} onClick={sendTest} data-tour="send"
                        whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}>
           <Send size={16} /> {busy ? "Sending…" : "Send test event"}
         </motion.button>
       </motion.section>
 
       <motion.main className="grid" variants={stage(0.1, 0)}>
-        <Card icon={<Database size={16} />} title="Live event feed"
+        <Card tour="feed" icon={<Database size={16} />} title="Live event feed"
               meta={events.data ? `${events.data.rows.length} rows · ${events.data.ms} ms` : ""} error={events.error} wide>
           <EventTable rows={events.data?.rows ?? []} testId={testId} />
         </Card>
-        <Card icon={<GitMerge size={16} />} title="Deduplication" meta={merge.data ? `${merge.data.ms} ms` : ""} error={merge.error}>
+        <Card tour="merge" icon={<GitMerge size={16} />} title="Deduplication" meta={merge.data ? `${merge.data.ms} ms` : ""} error={merge.error}>
           <MergePanel m={merge.data?.rows[0]} />
         </Card>
-        <Card icon={<Clock size={16} />} title="Activity by hour"
+        <Card tour="rollup" icon={<Clock size={16} />} title="Activity by hour"
               meta={rollup.data ? `${rollup.data.ms} ms` : ""} error={rollup.error}>
           <RollupChart r={rollup.data} mode={current.label} />
         </Card>
@@ -179,7 +182,8 @@ export default function App() {
       </motion.footer>
 
       <Toast onClose={closeToast}>{toast}</Toast>
-      <StaleNotice open={stale && !dismissed} lag={lag ?? null} mode={current.label} onClose={() => setDismissed(true)} />
+      <Tour open={touring} onClose={() => setTouring(false)} sent={"run" in test ? test.run : 0} />
+      <StaleNotice open={stale && !dismissed && !touring} lag={lag ?? null} mode={current.label} onClose={() => setDismissed(true)} />
     </motion.div>
   );
 }
@@ -266,10 +270,10 @@ function Toast({ children, onClose, after = 9000 }: { children: React.ReactNode;
   );
 }
 
-function Stat(p: { label: string; value: React.ReactNode; vkey?: React.Key; caption: React.ReactNode; tone?: "ok" | "warn" | "bad";
+function Stat(p: { tour?: string; label: string; value: React.ReactNode; vkey?: React.Key; caption: React.ReactNode; tone?: "ok" | "warn" | "bad";
                   react?: TargetAndTransition; reactKey?: React.Key }) {
   return (
-    <motion.div className="stat" variants={pop}>
+    <motion.div className="stat" variants={pop} data-tour={p.tour}>
       <span className="stat-label">{p.label}</span>
       {/* Remount on reactKey so a nod or shake replays */}
       <motion.span key={p.reactKey} className={`stat-value ${p.tone ?? ""}`} animate={p.react}>
@@ -283,9 +287,9 @@ function Stat(p: { label: string; value: React.ReactNode; vkey?: React.Key; capt
 const tone = (s: number) => (s < 10 ? "ok" : s < TARGET_S ? "warn" : "bad");
 
 function FreshnessStat({ lag, mode }: { lag: number | null; mode: string }) {
-  if (lag === null) return <Stat label="Freshness" value="—" caption="No events in this view yet" />;
+  if (lag === null) return <Stat tour="freshness" label="Freshness" value="—" caption="No events in this view yet" />;
   const s = lag / 1000;
-  return <Stat label="Freshness" value={`${s.toFixed(1)}s`} tone={tone(s)}
+  return <Stat tour="freshness" label="Freshness" value={`${s.toFixed(1)}s`} tone={tone(s)}
                caption={<>Newest event visible in <b>{mode}</b> · target under {TARGET_S}s</>} />;
 }
 
@@ -334,13 +338,13 @@ function Hops({ reached, failed }: { reached: number; failed?: boolean }) {
 
 function TestStat({ t, mode }: { t: Test; mode: string }) {
   if (t.state === "idle")
-    return <Stat label="Test event" value="—" caption="Send one to time Kafka → queryable, end to end" />;
-  if (t.state === "error") return <Stat label="Test event" value="Failed" tone="bad" caption={t.message} />;
+    return <Stat tour="test" label="Test event" value="—" caption="Send one to time Kafka → queryable, end to end" />;
+  if (t.state === "error") return <Stat tour="test" label="Test event" value="Failed" tone="bad" caption={t.message} />;
   // Segments done: sending → none; in Kafka (waiting, timed out) → 2; queryable → all 3
   const reached = t.state === "sending" ? 0 : t.state === "done" ? 3 : 2;
   const value = t.state === "timeout" ? "> 120s" : t.state === "done" ? `${t.seconds.toFixed(2)}s` : `${t.seconds.toFixed(1)}s`;
   return (
-    <Stat label="Test event" value={value}
+    <Stat tour="test" label="Test event" value={value}
           // The running timer ticks without a swap; only the final value swaps in
           vkey={t.state === "done" || t.state === "timeout" ? t.state : "running"}
           tone={t.state === "done" ? tone(t.seconds) : t.state === "timeout" ? "bad" : "warn"}
@@ -360,8 +364,8 @@ function TestStat({ t, mode }: { t: Test; mode: string }) {
 }
 
 function DupStat({ m }: { m?: Merge }) {
-  if (!m) return <Stat label="Duplicates collapsed" value="—" caption="Waiting for data" />;
-  return <Stat label="Duplicates collapsed" value={(m.VERSIONS - m.LOGICAL).toLocaleString()}
+  if (!m) return <Stat tour="dupes" label="Duplicates collapsed" value="—" caption="Waiting for data" />;
+  return <Stat tour="dupes" label="Duplicates collapsed" value={(m.VERSIONS - m.LOGICAL).toLocaleString()}
                caption={`${m.VERSIONS.toLocaleString()} messages received for ${m.LOGICAL.toLocaleString()} events`} />;
 }
 
@@ -372,9 +376,9 @@ function Identity({ h }: { h?: Health }) {
   </span>;
 }
 
-function Card(p: { icon: React.ReactNode; title: string; meta: string; error: string | null; wide?: boolean; children: React.ReactNode }) {
+function Card(p: { tour?: string; icon: React.ReactNode; title: string; meta: string; error: string | null; wide?: boolean; children: React.ReactNode }) {
   return (
-    <motion.div className={`card ${p.wide ? "wide" : ""}`} variants={pop}>
+    <motion.div className={`card ${p.wide ? "wide" : ""}`} variants={pop} data-tour={p.tour}>
       <div className="card-head"><h2>{p.icon} {p.title}</h2><span className="muted small">{p.meta}</span></div>
       {p.error ? <p className="error">{p.error}</p> : p.children}
     </motion.div>
