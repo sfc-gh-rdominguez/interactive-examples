@@ -68,3 +68,13 @@ sink-add:
 # Connector + task states
 sink-status:
   curl -s localhost:8083/connectors/ia-events-sink/status | jq '{connector: .connector.state, tasks: [.tasks[].state]}'
+
+# Python venv for producer + probe
+# Wheels for snowflake-connector-python and confluent-kafka stop at 3.14
+venv py="python3.14":
+  {{py}} -m venv --clear .venv
+  .venv/bin/pip install -q -r scripts/requirements.txt
+
+# Produce synthetic events: just produce --count 1000 --dup-rate 0.3
+produce *args:
+  .venv/bin/python scripts/produce.py {{args}}

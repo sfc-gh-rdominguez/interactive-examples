@@ -1,0 +1,10 @@
+USE ROLE IA_LAB_RL;
+USE WAREHOUSE IA_LAB_IWH;
+USE SCHEMA IA_LAB.KAFKA_STREAMING;
+
+SELECT COUNT(*) AS row_count, COUNT(DISTINCT tenant_id) AS tenants,
+       MAX(kafka_produce_ts) AS latest_produce
+FROM AUDIT_EVENTS DEDUP_OPTION = LATEST_ALL;
+
+-- Did schema evolution add columns (e.g. RECORD_METADATA)?
+DESCRIBE TABLE AUDIT_EVENTS;
