@@ -37,3 +37,11 @@ service-user connection:
   sed "s|__SVC_PUBLIC_KEY__|$(grep -v -- '-----' keys/rsa_key.pub | tr -d '\n')|g" data/migrations/002_service_user.sql > /tmp/iak_002.sql
   snow sql -c {{connection}} -f /tmp/iak_002.sql
   rm -f /tmp/iak_002.sql
+
+# CDC-enabled interactive table, which is where our kafka topic will stream into
+events-table connection:
+  snow sql -c {{connection}} -f data/migrations/003_events_table.sql
+
+# Interactive warehouse with the events table attached
+iwh connection:
+  snow sql -c {{connection}} -f data/migrations/004_interactive_wh.sql
