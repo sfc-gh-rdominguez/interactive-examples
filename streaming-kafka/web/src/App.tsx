@@ -18,8 +18,11 @@ const TARGET_S = 60;
 // Last merged normally trails the background merge by 2–5 minutes.
 const STALE_S: Record<Mode, number> = { LATEST_DEDUP: 20, LATEST_ALL: 20, LAST_DEDUP: 360 };
 const PRODUCE_CMD = "just produce --count 1000 --dup-rate 0.3";
-// One hue in lightness steps: the top actions, then "other"
-const SHADES = ["#3b82f6", "#60a5fa", "#93c5fd", "#475569"];
+// Catppuccin Mocha, mirrored from index.css for Recharts (SVG attributes don't reliably resolve CSS variables)
+const CTP = { mantle: "#181825", surface1: "#45475a", overlay0: "#6c7086", overlay1: "#7f849c", text: "#cdd6f4",
+              blue: "#89b4fa", sapphire: "#74c7ec", sky: "#89dceb" };
+// The top actions in one cool family, then "other"
+const SHADES = [CTP.blue, CTP.sapphire, CTP.sky, CTP.overlay0];
 const TOP_ACTIONS = 3;
 const hhmmss = (ms: number) => new Date(ms).toISOString().slice(11, 19);
 const hhmm = (ms: number) => new Date(ms).toISOString().slice(11, 16);
@@ -437,10 +440,10 @@ function RollupChart({ r, mode }: { r: Rollup | null; mode: string }) {
       </div>
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={data}>
-          <CartesianGrid vertical={false} stroke="#1e293b" />
-          <XAxis dataKey="hour" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-          <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} width={40} />
-          <Tooltip cursor={{ fill: "#1e293b" }} contentStyle={{ background: "#0f172a", border: "none", borderRadius: 8 }} />
+          <CartesianGrid vertical={false} stroke={CTP.surface1} />
+          <XAxis dataKey="hour" stroke={CTP.overlay1} fontSize={12} tickLine={false} axisLine={false} />
+          <YAxis stroke={CTP.overlay1} fontSize={12} tickLine={false} axisLine={false} width={40} />
+          <Tooltip cursor={{ fill: CTP.surface1 }} contentStyle={{ background: CTP.mantle, border: "none", borderRadius: 8, color: CTP.text }} />
           {keys.map((k, i) => <Bar key={k} dataKey={k} stackId="a" fill={SHADES[Math.min(i, SHADES.length - 1)]} />)}
         </BarChart>
       </ResponsiveContainer>
