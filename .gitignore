@@ -4,3 +4,5 @@ keys/
 plugins/
 .venv/
 __pycache__/
+node_modules/
+dist/
