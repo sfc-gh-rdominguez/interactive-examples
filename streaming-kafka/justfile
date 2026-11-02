@@ -6,11 +6,14 @@ default:
 
 # Preflight: local tools, account + region, Interactive CDC enablement
 doctor connection:
-  @for t in docker python3 openssl jq snow; do command -v $t >/dev/null && echo "✓ $t" || echo "✗ $t missing"; done
-  @docker compose version >/dev/null 2>&1 && echo "✓ docker compose" || echo "✗ docker compose missing"
-  @command -v bun >/dev/null && echo "✓ bun" || echo "· bun missing (only needed for 'just web-dev')"
+  @rc=0; for t in docker openssl jq snow curl; do command -v $t >/dev/null && echo "✓ $t" || { echo "✗ $t missing"; rc=1; }; done; exit $rc
+  @docker compose version >/dev/null 2>&1 && echo "✓ docker compose" || { echo "✗ docker compose missing"; exit 1; }
   @snow sql -c {{connection}} -f data/checks/00_preflight.sql || { echo "✗ cannot reach Snowflake via '{{connection}}' (VPN? connection name?)"; exit 1; }
-  @if snow sql -c {{connection}} -f data/checks/00_cdc_probe.sql >/dev/null 2>&1; then echo "✓ Interactive CDC enabled"; else snow sql -c {{connection}} -q "DROP DATABASE IF EXISTS IA_CDC_PROBE_DB" >/dev/null 2>&1; echo "✗ Interactive CDC NOT enabled."; fi
+  @if snow sql -c {{connection}} -f data/checks/00_cdc_probe.sql >/dev/null 2>&1; then echo "✓ Interactive CDC enabled"; else snow sql -c {{connection}} -q "DROP DATABASE IF EXISTS IA_CDC_PROBE_DB" >/dev/null 2>&1; echo "✗ Interactive CDC NOT enabled."; exit 1; fi
+
+# One shot: every step end to end, verifying as it goes (safe to re-run)
+up connection:
+  bash scripts/up.sh {{connection}}
 
 # Run any check file: just check <connection> 05_table_ready
 check connection name:
@@ -69,19 +72,17 @@ sink-add:
 sink-status:
   curl -s localhost:8083/connectors/ia-events-sink/status | jq '{connector: .connector.state, tasks: [.tasks[].state]}'
 
-# Python venv for producer + probe
-# Wheels for snowflake-connector-python and confluent-kafka stop at 3.14
-venv py="python3.14":
-  {{py}} -m venv --clear .venv
-  .venv/bin/pip install -q -r scripts/requirements.txt
+# Build the producer + probe image (Python runs in Docker, not on the host)
+tools:
+  docker compose --profile tools build tools
 
 # Produce synthetic events: just produce --count 1000 --dup-rate 0.3
 produce *args:
-  .venv/bin/python scripts/produce.py {{args}}
+  docker compose run --rm tools produce.py {{args}}
 
 # Egress -> visible latency: just probe --dedup LATEST_DEDUP
 probe *args:
-  .venv/bin/python scripts/probe.py {{args}}
+  docker compose run --rm tools probe.py {{args}}
 
 # All three scan modes, back to back
 probe-all:
@@ -123,24 +124,24 @@ api-logs:
 app-up:
   docker compose up -d --build api web
 
-# Hot-reload the SPA locally against the BFF container (http://localhost:5173)
+# Hot-reload the SPA in Docker against the BFF container (http://localhost:5173)
 web-dev:
-  cd web && bun install && bun run dev
+  docker compose --profile dev up web-dev
 
 # Pause for the day: stop containers, suspend the interactive warehouse (it bills while running)
 stop connection:
-  docker compose stop
+  docker compose --profile tools --profile dev stop
   -snow sql -c {{connection}} -q "USE ROLE IA_LAB_RL; ALTER WAREHOUSE IA_LAB_IWH SUSPEND"
 
 # Remove everything: the sink, all containers + volumes + built images, and every Snowflake object
 [confirm("Drop IA_LAB, both IA_LAB warehouses, the IA_*_SVC users and IA_*_RL roles, and all local containers? [y/N]")]
 teardown connection:
   -curl -s -X DELETE localhost:8083/connectors/ia-events-sink
-  docker compose down -v --rmi local --remove-orphans
+  docker compose --profile tools --profile dev down -v --rmi local --remove-orphans
   snow sql -c {{connection}} -f data/teardown/teardown.sql
   @echo "Done. Confirm nothing is left: just check {{connection}} 16_teardown"
 
-# Delete generated local files: keys, the connector JARs, the venv, and JS build output (keeps .env)
-[confirm("Delete keys/, plugins/, .venv/, web/node_modules/ and web/dist/? [y/N]")]
+# Delete generated local files: keys and the connector JARs (keeps .env)
+[confirm("Delete keys/ and plugins/? [y/N]")]
 clean-local:
-  rm -rf keys plugins .venv web/node_modules web/dist api/node_modules scripts/__pycache__
+  rm -rf keys plugins

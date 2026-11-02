@@ -33,7 +33,7 @@ def main():
         schema=e["SF_SCHEMA"],
     )
     cur = conn.cursor()
-    p = Producer({"bootstrap.servers": "localhost:9092", "linger.ms": 0})
+    p = Producer({"bootstrap.servers": e.get("KAFKA_BOOTSTRAP", "localhost:9092"), "linger.ms": 0})
     topic = e.get("KAFKA_TOPIC", "audit_events")
     results = []
     for i in range(a.runs):

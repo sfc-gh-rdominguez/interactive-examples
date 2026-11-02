@@ -53,7 +53,7 @@ def main():
     ap.add_argument("--rate", type=float, default=200, help="events/sec")
     a = ap.parse_args()
 
-    p = Producer({"bootstrap.servers": "localhost:9092", "linger.ms": 5})
+    p = Producer({"bootstrap.servers": os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092"), "linger.ms": 5})
     sent, recent = 0, []
     for _ in range(a.count):
         ev = new_event(f"tenant-{random.randint(1, a.tenants):04d}")

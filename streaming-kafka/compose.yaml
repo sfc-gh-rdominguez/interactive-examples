@@ -48,7 +48,7 @@ services:
     depends_on:
       kafka: { condition: service_healthy }
     ports: ["8001:8001"]
-    volumes: ["./keys/dash_key.p8:/keys/dash_key.p8:ro"]
+    volumes: ["./keys:/keys:ro"]
     environment:
       SF_ACCOUNT: ${SF_ACCOUNT}
       SF_DASH_USER: ${SF_DASH_USER}
@@ -61,6 +61,36 @@ services:
       KAFKA_TOPIC: ${KAFKA_TOPIC}
       KAFKAJS_NO_PARTITIONER_WARNING: "1"
       SERVER_PORT: 8001
+
+  # Producer + probe; run on demand: docker compose run --rm tools produce.py ...
+  tools:
+    build: ./scripts
+    profiles: [tools]
+    depends_on:
+      kafka: { condition: service_healthy }
+    volumes: ["./keys:/keys:ro"]
+    environment:
+      SF_ACCOUNT: ${SF_ACCOUNT}
+      SF_SVC_USER: ${SF_SVC_USER}
+      SF_ROLE: ${SF_ROLE}
+      SF_DB: ${SF_DB}
+      SF_SCHEMA: ${SF_SCHEMA}
+      SF_IWH: ${SF_IWH}
+      SF_PRIVATE_KEY_PATH: /keys/rsa_key.p8
+      KAFKA_BOOTSTRAP: kafka:29092
+      KAFKA_TOPIC: ${KAFKA_TOPIC}
+
+  # Vite with hot reload against the api container: http://localhost:5173
+  web-dev:
+    image: oven/bun:1
+    profiles: [dev]
+    depends_on: [api]
+    working_dir: /app
+    command: sh -c "bun install && bun run dev --host 0.0.0.0"
+    ports: ["5173:5173"]
+    volumes: ["./web:/app", "/app/node_modules"]
+    environment:
+      API_URL: http://api:8001
 
   web:
     build: ./web

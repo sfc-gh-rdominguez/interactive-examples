@@ -35,9 +35,10 @@ new Elysia()
   .get("/healthcheck", () => "ok")
   .get("/api/health", () =>
     timed(query("SELECT CURRENT_USER() AS USER_NAME, CURRENT_ROLE() AS ROLE_NAME, CURRENT_WAREHOUSE() AS WAREHOUSE_NAME")))
+  // LATEST_ALL: any version proves a tenant exists, and LAST_DEDUP is empty until the first merge
   .get("/api/tenants", () =>
-    timed(query(`SELECT DISTINCT tenant_id AS TENANT FROM AUDIT_EVENTS DEDUP_OPTION = LAST_DEDUP
-                 WHERE event_ts >= DATEADD(hour, -24, SYSDATE()) ORDER BY 1 LIMIT 200`)))
+    timed(query(`SELECT DISTINCT tenant_id AS TENANT FROM AUDIT_EVENTS DEDUP_OPTION = LATEST_ALL
+                 WHERE event_ts >= DATEADD(hour, -24, SYSDATE()) AND tenant_id <> 'probe' ORDER BY 1 LIMIT 200`)))
   .get("/api/events", ({ query: q }) =>
     timed(query(`SELECT event_ts AS EVENT_TS, source_system AS SOURCE, event_id AS EVENT_ID, actor_id AS ACTOR,
                         action AS ACTION, resource AS RESOURCE, source_egress_ts AS EGRESS_TS
